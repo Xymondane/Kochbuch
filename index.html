@@ -187,7 +187,7 @@ function neu(){
   <h2>Daten</h2>
   ${DB_URL?`<p class="note">Die Datenbank ist fest in der Seite eingetragen.</p>`:`<label for="db">Datenbank-Adresse</label><input id="db" value="${esc(dbUrl)}" placeholder="https://…firebasedatabase.app" autocomplete="off"><button class="pri" data-act="db">Verbinden</button><p class="note">Feld leeren und „Verbinden“ tippen, um die Verbindung zu trennen.</p>`}
   <p class="note">Mit einer Sicherung kannst du Gerichte auch von Hand auf ein anderes Gerät übertragen.</p>
-  <div class="row"><button data-act="export">Sicherung speichern</button><button data-act="imp">Sicherung laden</button><button data-act="reset">Auf Startliste zurücksetzen</button></div>
+  <div class="row">${dbUrl?`<button data-act="sync">Jetzt abgleichen</button>`:""}<button data-act="export">Sicherung speichern</button><button data-act="imp">Sicherung laden</button><button data-act="sync">Jetzt abgleichen</button><button data-act="reset">Auf Startliste zurücksetzen</button></div>
   <input type="file" id="imp" accept=".json,application/json" hidden>`;
 }
 function render(){
@@ -207,14 +207,16 @@ function addPantry(v){
 document.addEventListener("click",e=>{
   const b=e.target.closest("[data-act]");if(!b)return;
   const a=b.dataset.act,v=b.dataset.v;
-  if(a==="tab")st.tab=v;
+  if(a==="tab"){st.tab=v;setTimeout(pull,0)}
   else if(a==="cat")st.cat=v;
   else if(a==="max")st.max=+v;
   else if(a==="shift")st.shift++;
+  else if(a==="sync"){setStatus("connecting");setTimeout(pull,0)}
+  else if(a==="sync"){st.msg="Abgleich gestartet.";setTimeout(pull,0)}
   else if(a==="db"){
     const v=document.getElementById("db").value.trim().replace(/\/+$/,"");
     if(v&&!/^https:\/\/.+/.test(v)){alert("Die Adresse muss mit https:// beginnen.");return}
-    dbUrl=v;store("kb_db",v);setDirty(false);setStatus(v?"connecting":"off");
+    dbUrl=v;store("kb_db",v);queue.length=0;store("kb_q",queue);setStatus(v?"connecting":"off");
     st.msg=v?"Datenbank verbunden. Die Gerichte werden abgeglichen.":"Datenbank getrennt.";setTimeout(pull,0);
   }
   else if(a==="fold")st.fold=!st.fold;
@@ -252,51 +254,76 @@ document.addEventListener("change",e=>{
 // Trage hier die Adresse deiner Datenbank ein, z. B. "https://mein-kochbuch-default-rtdb.europe-west1.firebasedatabase.app"
 const DB_URL="https://kochbuch-83ba0-default-rtdb.europe-west1.firebasedatabase.app";
 let dbUrl=(DB_URL||load("kb_db","")).trim().replace(/\/+$/,"");
-const sync={ver:0,busy:0,timer:null,dirty:load("kb_dirty",false)};
+const queue=load("kb_q",[]);
+const sync={ver:0,flushing:false,timer:null};
 const STATUS={off:"Nur auf diesem Gerät gespeichert.",connecting:"Verbinde …",ok:"Mit der Datenbank abgeglichen.",err:"Keine Verbindung. Änderungen werden später übertragen."};
-function setStatus(k){const e=document.getElementById("sync");if(e)e.textContent=STATUS[k]}
+const VERSION="v4";
+function setStatus(k,x){const e=document.getElementById("sync");if(e)e.textContent=STATUS[k]+(x?" ("+x+")":"")+" "+VERSION}
+const errText=e=>e&&e.message&&e.message!=="Failed to fetch"?e.message:"Netzwerk";
 const saveLocal=()=>store("kb_dishes",dishes);
-const setDirty=v=>{sync.dirty=v;store("kb_dirty",v)};
 const toMap=a=>Object.fromEntries(a.map(d=>[d.id,{name:d.name,cat:d.cat,ing:d.ing}]));
 const fromMap=o=>Object.entries(o||{}).filter(([,d])=>d&&d.name).map(([id,d])=>({id,name:String(d.name),cat:String(d.cat||"Sonstiges"),ing:Object.values(d.ing||{}).map(String)}));
 const sig=(d,p)=>JSON.stringify([[...d].sort((a,b)=>a.id<b.id?-1:1).map(x=>[x.id,x.name,x.cat,x.ing]),p]);
 async function api(path,method,body){
-  const r=await fetch(dbUrl+path+".json",{method:method||"GET",body:body===undefined?undefined:JSON.stringify(body)});
-  if(!r.ok)throw new Error(r.status);
+  const r=await fetch(dbUrl+(path||"/")+".json",{method:method||"GET",cache:"no-store",body:body===undefined?undefined:JSON.stringify(body)});
+  if(!r.ok)throw new Error(r.status===401||r.status===403?"Keine Berechtigung, Regeln in Firebase prüfen":"Fehler "+r.status);
   return r.json();
 }
-async function push(path,val){
+// Änderungen kommen in eine Warteschlange und werden der Reihe nach zur Datenbank geschickt (auch nach einem Verbindungsabbruch).
+function push(path,val){
   if(!dbUrl)return;
-  sync.ver++;sync.busy++;
-  try{await api(path,"PUT",val);setStatus("ok")}catch(e){setDirty(true);setStatus("err")}finally{sync.busy--}
+  sync.ver++;
+  if(path==="/")queue.length=0;
+  else for(let i=queue.length-1;i>=0;i--)if(queue[i].path===path)queue.splice(i,1);
+  queue.push({path,val});store("kb_q",queue);flush();
 }
-async function pushAll(){
-  if(!dbUrl)return;
-  sync.ver++;sync.busy++;
-  try{await api("","PUT",{init:true,dishes:toMap(dishes),pantry});setDirty(false);setStatus("ok")}catch(e){setDirty(true);setStatus("err")}finally{sync.busy--}
+const pushAll=()=>push("/",{init:true,dishes:toMap(dishes),pantry:[...pantry]});
+async function flush(){
+  if(sync.flushing||!dbUrl)return;
+  sync.flushing=true;
+  try{
+    while(queue.length){
+      const op=queue[0];
+      await api(op.path,"PUT",op.val);
+      if(queue[0]===op){queue.shift();store("kb_q",queue)}
+    }
+    setStatus("ok");
+  }catch(e){setStatus("err",errText(e))}
+  finally{sync.flushing=false}
 }
 function persistPantry(){
   store("kb_pantry",pantry);
   if(!dbUrl)return;
   sync.ver++;clearTimeout(sync.timer);
-  sync.timer=setTimeout(()=>{sync.timer=null;push("/pantry",pantry)},500);
+  sync.timer=setTimeout(()=>{sync.timer=null;push("/pantry",[...pantry])},500);
 }
+const isSeed=d=>/^s\d+$/.test(d.id);
 async function pull(){
-  if(!dbUrl||sync.busy||sync.timer)return;
+  if(!dbUrl||sync.timer)return;
+  if(queue.length||sync.flushing){await flush();if(queue.length||sync.flushing)return}
   const v=sync.ver;
   try{
-    if(sync.dirty){await pushAll();return}
-    const o=await api("");
-    if(v!==sync.ver||sync.busy||sync.timer)return;
-    if(!o||!o.init){await pushAll();return}
-    const nd=fromMap(o.dishes),np=o.pantry?Object.values(o.pantry).map(String):[];
+    const o=await api("/");
+    if(v!==sync.ver||sync.timer||queue.length||sync.flushing)return;
+    const nd=fromMap(o&&o.dishes),first=load("kb_sync","")!==dbUrl;
+    if(first){
+      // Erster Abgleich dieses Geräts: selbst angelegte Gerichte nicht verlieren
+      const rid=new Set(nd.map(d=>d.id));
+      dishes.filter(d=>!isSeed(d)&&!rid.has(d.id)).forEach(d=>nd.push(d));
+    }
+    if(!o||!o.init){
+      if(first){dishes=nd.concat(dishes.filter(d=>isSeed(d)&&!nd.some(x=>x.id===d.id)))}
+      saveLocal();store("kb_sync",dbUrl);pushAll();render();return;
+    }
+    const np=o.pantry?Object.values(o.pantry).map(String):[];
+    if(first){store("kb_sync",dbUrl);nd.forEach(d=>{if(!(o.dishes&&o.dishes[d.id]))push("/dishes/"+d.id,{name:d.name,cat:d.cat,ing:d.ing})})}
     setStatus("ok");
     if(sig(nd,np)===sig(dishes,pantry))return;
     dishes=nd;pantry=np;saveLocal();store("kb_pantry",pantry);
     if(!/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName))render();
-  }catch(e){setStatus("err")}
+  }catch(e){setStatus("err",errText(e))}
 }
-setInterval(pull,20000);
+setInterval(pull,10000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)pull()});
 window.addEventListener("focus",pull);
 render();
