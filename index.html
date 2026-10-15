@@ -250,8 +250,7 @@ document.addEventListener("change",e=>{
 
 // ---- Online-Abgleich über Firebase Realtime Database ----
 // Trage hier die Adresse deiner Datenbank ein, z. B. "https://mein-kochbuch-default-rtdb.europe-west1.firebasedatabase.app"
-const DB_URL="
-https://kochbuch-83ba0-default-rtdb.europe-west1.firebasedatabase.app:";
+const DB_URL="https://kochbuch-83ba0-default-rtdb.europe-west1.firebasedatabase.app";
 let dbUrl=(DB_URL||load("kb_db","")).trim().replace(/\/+$/,"");
 const sync={ver:0,busy:0,timer:null,dirty:load("kb_dirty",false)};
 const STATUS={off:"Nur auf diesem Gerät gespeichert.",connecting:"Verbinde …",ok:"Mit der Datenbank abgeglichen.",err:"Keine Verbindung. Änderungen werden später übertragen."};
