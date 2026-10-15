@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Was koche ich?</title>
+<style>
+:root{--bg:#eef2ec;--surf:#fbfcfa;--ink:#1f2a24;--soft:#5b6a61;--basil:#2e6b4e;--mus:#e3a82b;--line:#cbd5c8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:18px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:16px 16px 60px}
+h1{font:700 2rem/1.1 "Trebuchet MS",system-ui,sans-serif;margin:8px 0 14px;color:var(--basil)}
+h2{font:700 1.15rem "Trebuchet MS",system-ui,sans-serif;margin:26px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--basil)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{min-height:46px;padding:0 16px;border:1.5px solid var(--basil);background:var(--surf);border-radius:8px;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--mus);outline-offset:2px}
+.tabs{display:flex;gap:8px;position:sticky;top:0;background:var(--bg);padding:6px 0 10px;z-index:2}
+.tabs button{flex:1;font-weight:600}
+.tabs .on,.chip.on,.seg .on{background:var(--basil);color:#fff}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.chip{min-height:42px;padding:0 14px;border-radius:21px;border-color:var(--line)}
+.chip.on{border-color:var(--basil)}
+details{border-bottom:1px solid var(--line)}
+summary{min-height:52px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 2px;cursor:pointer;list-style:none}
+summary::-webkit-details-marker{display:none}
+.n{font-weight:600;flex:1 1 200px}
+.tag{font-size:.85rem;padding:2px 10px;border-radius:12px}
+.tag.ok{background:var(--basil);color:#fff}
+.tag.miss{background:var(--mus);color:#2b2100}
+ul{margin:0 0 10px;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px}
+li{background:var(--surf);border:1px solid var(--line);border-radius:6px;padding:3px 10px}
+li.m{background:var(--mus);border-color:var(--mus);color:#2b2100;font-weight:600}
+.del{border-color:#a33;color:#a33;margin:0 0 12px}
+.hint,.note{color:var(--soft)}
+.msg{background:var(--basil);color:#fff;padding:10px 14px;border-radius:8px;margin:6px 0}
+input,select,textarea{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--surf);min-height:46px}
+label{display:block;margin:14px 0 4px;font-weight:600}
+.add{display:flex;gap:8px}.add button{flex:none}
+.seg{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.pri{background:var(--basil);color:#fff;font-weight:600;margin-top:14px}
+h3{font:700 1rem system-ui,sans-serif;color:var(--soft);margin:18px 0 0}
+.rec{margin:8px 0 6px;padding:0 0 4px 14px;border-left:5px solid var(--mus)}
+.rec h2{margin:6px 0 0;padding:0;border:0}
+.rec .note{margin:0 0 4px}
+li.s{color:var(--soft);border-style:dashed}
+@media(prefers-reduced-motion:no-preference){.msg{animation:f .3s}}@keyframes f{from{opacity:0}}
+</style>
+</head>
+<body>
+<main>
+<h1>Was koche ich?</h1>
+<nav class="tabs" id="tabs"></nav>
+<div id="view"></div>
+</main>
+<script>
+const CATS=["Suppen","Eintöpfe","Pasta & Pizza","Mittags","Gerichte","Dessert","Sonstiges"];
+// Zutaten aus STAPLE gelten immer als vorhanden und werden nie als „fehlt“ markiert.
+const RAW={
+"Suppen":[
+"Minestrone|Zwiebel,Knoblauch,Möhre,Sellerie,Zucchini,Kartoffel,Dosentomaten,Weiße Bohnen,Nudeln,Gemüsebrühe",
+"Kartoffelsuppe mit Speck|Kartoffel,Speck,Zwiebel,Möhre,Sellerie,Gemüsebrühe,Petersilie",
+"Kürbissuppe|Kürbis,Zwiebel,Knoblauch,Kartoffel,Gemüsebrühe,Sahne",
+"Tomatensuppe|Dosentomaten,Zwiebel,Knoblauch,Tomatenmark,Gemüsebrühe,Sahne,Basilikum",
+"Paprikasuppe|Paprika,Zwiebel,Knoblauch,Kartoffel,Tomatenmark,Gemüsebrühe,Sahne",
+"Petersiliencremesuppe|Petersilie,Zwiebel,Kartoffel,Gemüsebrühe,Sahne,Butter",
+"Blumenkohlsuppe|Blumenkohl,Zwiebel,Kartoffel,Gemüsebrühe,Sahne,Muskat",
+"Möhrensuppe|Möhre,Zwiebel,Kartoffel,Ingwer,Gemüsebrühe,Sahne",
+"Spargelcremesuppe|Spargel,Butter,Mehl,Gemüsebrühe,Sahne,Zitrone",
+"Champignoncremesuppe|Champignons,Zwiebel,Butter,Mehl,Gemüsebrühe,Sahne,Petersilie",
+"Gulaschsuppe (vom Metzger)|Gulasch vom Metzger,Zwiebel,Paprika,Kartoffel,Tomatenmark,Paprikapulver,Knoblauch,Rinderbrühe",
+"Erbsensuppe|Erbsen,Kartoffel,Möhre,Zwiebel,Sellerie,Würstchen,Speck",
+"Zwiebelsuppe|Zwiebel,Butter,Mehl,Rinderbrühe,Baguette,Käse"],
+"Pasta & Pizza":[
+"Bolognese|Spaghetti,Hackfleisch,Zwiebel,Knoblauch,Möhre,Dosentomaten,Tomatenmark,Parmesan",
+"Käsenudeln|Nudeln,Käse,Sahne,Zwiebel",
+"Arrabiata|Spaghetti,Dosentomaten,Knoblauch,Chili,Petersilie,Parmesan",
+"Pesto-Nudeln|Nudeln,Basilikum,Pinienkerne,Parmesan,Knoblauch",
+"Porree-Nudelauflauf|Nudeln,Porree,Schinken,Sahne,Käse,Zwiebel",
+"Gemüsenudeln|Nudeln,Zucchini,Paprika,Möhre,Zwiebel,Knoblauch,Sahne",
+"Lachsnudeln|Bandnudeln,Lachs,Sahne,Zwiebel,Dill,Zitrone",
+"Zucchini-Pilz-Nudeln|Nudeln,Zucchini,Champignons,Knoblauch,Sahne,Parmesan",
+"Speck-Pilz-Sahne-Nudeln|Nudeln,Speck,Champignons,Zwiebel,Sahne",
+"Chili con Carne|Hackfleisch,Zwiebel,Knoblauch,Paprika,Kidneybohnen,Mais,Dosentomaten,Tomatenmark,Chili,Reis",
+"Lasagne|Lasagneplatten,Hackfleisch,Zwiebel,Knoblauch,Dosentomaten,Tomatenmark,Mehl,Butter,Milch,Käse",
+"Scampi-Bandnudeln|Bandnudeln,Garnelen,Knoblauch,Sahne,Petersilie,Zitrone",
+"Pizza|Mehl,Dosentomaten,Mozzarella,Oregano"],
+"Mittags":[
+"Käserollen|Blätterteig,Käse,Schinken,Eier",
+"Lumpia|Frühlingsrollenteig,Hackfleisch,Möhre,Weißkohl,Zwiebel,Knoblauch,Sojasauce",
+"Toast Hawaii|Toast,Schinken,Ananas,Käse,Butter",
+"Belegte Baguettes|Baguette,Butter,Salat,Tomate,Käse,Schinken",
+"Wraps|Wrap-Fladen,Hähnchen,Salat,Tomate,Paprika,Frischkäse",
+"Omelett|Eier,Milch,Käse,Schinken,Butter"],
+"Gerichte":[
+"Moussaka|Aubergine,Hackfleisch,Kartoffel,Zwiebel,Knoblauch,Dosentomaten,Milch,Mehl,Butter,Käse",
+"Gyros|Gyrosfleisch,Zwiebel,Tomate,Tzatziki,Pommes",
+"Stiefelteller|Bratwurst,Pommes,Salat,Zwiebel",
+"Hackbraten mit Ei|Hackfleisch,Eier,Zwiebel,Brötchen,Senf",
+"Frikadellen|Hackfleisch,Eier,Zwiebel,Brötchen,Senf,Petersilie",
+"Fritten, Thunfisch und Ei|Pommes,Thunfisch,Eier,Zwiebel",
+"Schnitzel|Schweineschnitzel,Eier,Mehl,Paniermehl,Zitrone,Butter",
+"Bauernpfanne|Kartoffel,Speck,Zwiebel,Eier,Paprika,Champignons",
+"Holzfällersteak|Nackensteak,Zwiebel,Speck,Käse,Senf",
+"Gegrilltes Steak|Rindersteak,Butter,Knoblauch,Rosmarin"],
+"Eintöpfe":[
+"Wirsing-Eintopf|Wirsing,Kartoffel,Hackfleisch,Zwiebel,Möhre,Gemüsebrühe",
+"Möhren-Eintopf|Möhre,Kartoffel,Zwiebel,Würstchen,Gemüsebrühe,Petersilie"]
+};
+const seed=()=>{let n=0;return Object.entries(RAW).flatMap(([c,l])=>l.map(s=>{const[a,b]=s.split("|");return{id:"s"+n++,name:a,cat:c,ing:b.split(",")}}))};
+const norm=s=>s.trim().toLowerCase();
+const STAPLE=new Set("salz,pfeffer,öl,wasser,zucker,butter,milch,gewürze,muskat,paprikapulver,oregano,rosmarin".split(","));
+const isStaple=i=>STAPLE.has(norm(i));
+const LAST="Konserven, Tiefkühl & Sonstiges";
+const GROUPS={
+"Gemüse, Obst & Kräuter":"Ananas,Aubergine,Basilikum,Blumenkohl,Champignons,Chili,Dill,Ingwer,Kartoffel,Knoblauch,Kürbis,Möhre,Paprika,Petersilie,Porree,Salat,Sellerie,Spargel,Tomate,Weißkohl,Wirsing,Zitrone,Zucchini,Zwiebel",
+"Fleisch, Fisch & Wurst":"Bratwurst,Garnelen,Gulasch vom Metzger,Gyrosfleisch,Hackfleisch,Hähnchen,Lachs,Nackensteak,Rindersteak,Schinken,Schweineschnitzel,Speck,Thunfisch,Würstchen",
+"Milchprodukte & Eier":"Eier,Frischkäse,Käse,Mozzarella,Parmesan,Sahne,Tzatziki",
+"Nudeln, Reis & Brot":"Bandnudeln,Baguette,Blätterteig,Brötchen,Frühlingsrollenteig,Lasagneplatten,Mehl,Nudeln,Paniermehl,Reis,Spaghetti,Toast,Wrap-Fladen",
+[LAST]:"Dosentomaten,Erbsen,Gemüsebrühe,Kidneybohnen,Mais,Pinienkerne,Pommes,Rinderbrühe,Senf,Sojasauce,Tomatenmark,Weiße Bohnen"};
+const GROUP_OF=new Map();Object.entries(GROUPS).forEach(([g,l])=>l.split(",").forEach(i=>GROUP_OF.set(norm(i),g)));
+const groupOf=i=>GROUP_OF.get(norm(i))||LAST;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const load=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}};
+const store=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let dishes=load("kb_dishes",null)||seed(), pantry=load("kb_pantry",[]);
+if(load("kb_v",1)<2){const ok=i=>norm(i)!=="hefe";dishes.forEach(d=>d.ing=d.ing.filter(ok));pantry=pantry.filter(i=>ok(i)&&!isStaple(i));store("kb_dishes",dishes);store("kb_pantry",pantry);store("kb_v",2)}
+let st={tab:"book",cat:"Alle",max:2,fold:true,msg:"",shift:0};
+const cats=()=>[...new Set([...CATS,...dishes.map(d=>d.cat)])];
+const allIng=()=>{const m=new Map();dishes.forEach(d=>d.ing.forEach(i=>{if(!isStaple(i))m.set(norm(i),i)}));pantry.forEach(i=>{if(!m.has(norm(i)))m.set(norm(i),i)});return[...m.values()].sort((a,b)=>a.localeCompare(b,"de"))};
+const byName=(a,b)=>a.name.localeCompare(b.name,"de");
+
+const missOf=(d,h)=>d.ing.filter(i=>!isStaple(i)&&!h.has(norm(i)));
+const hitOf=(d,h)=>d.ing.filter(i=>!isStaple(i)&&h.has(norm(i))).length;
+function dish(d,have,open){
+  const miss=have?missOf(d,have):[];
+  const tag=have?(miss.length?`<span class="tag miss">fehlt: ${miss.map(esc).join(", ")}</span>`:`<span class="tag ok">alles da</span>`):"";
+  const li=d.ing.map(i=>{const c=have?(isStaple(i)?"s":miss.includes(i)?"m":""):"";return `<li${c?` class="${c}"`:""}>${esc(i)}</li>`}).join("");
+  return `<details${open?" open":""}><summary><span class="n">${esc(d.name)}</span>${tag}</summary><ul>${li}</ul>${open?"":`<button class="del" data-act="del" data-id="${esc(d.id)}">Gericht löschen</button>`}</details>`;
+}
+function catChips(){
+  return `<div class="row">`+["Alle",...cats()].map(c=>`<button class="chip${st.cat===c?" on":""}" data-act="cat" data-v="${esc(c)}">${esc(c)}</button>`).join("")+`</div>`;
+}
+const inCat=d=>st.cat==="Alle"||d.cat===st.cat;
+
+function daily(){
+  if(!dishes.length)return"";
+  const have=new Set(pantry.map(norm));
+  let pool=[...dishes].sort(byName);
+  if(pantry.length){const r=pool.filter(d=>hitOf(d,have)>0&&!missOf(d,have).length);if(r.length)pool=r}
+  const n=new Date(),k=n.getFullYear()*10000+(n.getMonth()+1)*100+n.getDate();
+  const d=pool[((Math.imul(k,2654435761)>>>0)+st.shift)%pool.length];
+  return `<section class="rec"><h2>Empfehlung des Tages</h2><p class="note">${esc(n.toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"}))}. ${esc(d.cat)}</p>${dish(d,pantry.length?have:undefined,true)}<div class="row"><button data-act="shift">Anderer Vorschlag</button></div></section>`;
+}
+function book(){
+  let h=daily()+catChips();
+  const list=cats().filter(c=>st.cat==="Alle"||c===st.cat);
+  list.forEach(c=>{
+    const ds=dishes.filter(d=>d.cat===c).sort(byName);
+    h+=`<h2>${esc(c)} (${ds.length})</h2>`+(ds.length?ds.map(d=>dish(d)).join(""):`<p class="hint">Noch nichts hier. Unter „Neu“ kannst du ein Gericht hinzufügen.</p>`);
+  });
+  return h;
+}
+function pantryView(){
+  const have=new Set(pantry.map(norm)),all=allIng();
+  const chip=i=>`<button class="chip${have.has(norm(i))?" on":""}" data-act="tog" data-i="${esc(i)}">${esc(i)}</button>`;
+  let h=`<p class="note">Tippe an, was du zuhause hast. Salz, Pfeffer, Öl, Wasser, Zucker, Butter, Milch und Gewürze setze ich voraus.</p>
+  <div class="add"><input id="pin" list="dl" placeholder="Weitere Zutat eintippen" autocomplete="off"><datalist id="dl">${all.map(i=>`<option value="${esc(i)}">`).join("")}</datalist><button data-act="add">Hinzufügen</button></div>
+  <div class="row"><button data-act="fold">${st.fold?"Zutatenliste einklappen":"Zutatenliste ausklappen"} (${pantry.length} gewählt)</button>${pantry.length?`<button data-act="clear">Alles abwählen</button>`:""}</div>`;
+  if(st.fold)h+=Object.keys(GROUPS).map(g=>{const l=all.filter(i=>groupOf(i)===g);return l.length?`<h3>${esc(g)}</h3><div class="row">${l.map(chip).join("")}</div>`:""}).join("");
+  h+=`<div class="seg"><span>Es dürfen höchstens</span>`+[1,2,3,4].map(n=>`<button class="chip${st.max===n?" on":""}" data-act="max" data-v="${n}">${n}</button>`).join("")+`<span>Zutaten fehlen.</span></div>`+catChips();
+  if(!pantry.length)return h+`<p class="hint">Wähle oben mindestens eine Zutat, dann siehst du passende Gerichte.</p>`;
+  const rows=dishes.filter(inCat).map(d=>({d,m:missOf(d,have).length}))
+    .filter(r=>r.m<=st.max&&hitOf(r.d,have)>=1).sort((a,b)=>a.m-b.m||byName(a.d,b.d));
+  const ready=rows.filter(r=>!r.m),near=rows.filter(r=>r.m);
+  h+=`<h2>Kannst du jetzt kochen (${ready.length})</h2>`+(ready.length?ready.map(r=>dish(r.d,have)).join(""):`<p class="hint">Dafür fehlt noch etwas. Schau bei „Fast da“.</p>`);
+  h+=`<h2>Fast da: es fehlt wenig (${near.length})</h2>`+(near.length?near.map(r=>dish(r.d,have)).join(""):`<p class="hint">Nichts gefunden. Erhöhe die Zahl fehlender Zutaten oder wähle mehr aus.</p>`);
+  return h;
+}
+function neu(){
+  return `<label for="nn">Name des Gerichts</label><input id="nn" autocomplete="off">
+  <label for="nc">Kategorie</label><select id="nc">${cats().map(c=>`<option>${esc(c)}</option>`).join("")}</select>
+  <label for="ni">Zutaten (mit Komma oder Zeilenumbruch trennen)</label><textarea id="ni" rows="5"></textarea>
+  <p class="note">Schreibe Zutaten so wie in der Vorratsliste (z. B. „Möhre“, „Sahne“), damit der Abgleich klappt.</p>
+  <button class="pri" data-act="save">Gericht speichern</button>
+  <h2>Daten</h2>
+  <p class="note">Die Gerichte werden im Browser jedes Geräts gespeichert. Mit einer Sicherung kannst du sie auf ein anderes Gerät übertragen.</p>
+  <div class="row"><button data-act="export">Sicherung speichern</button><button data-act="imp">Sicherung laden</button><button data-act="reset">Auf Startliste zurücksetzen</button></div>
+  <input type="file" id="imp" accept=".json,application/json" hidden>`;
+}
+function render(){
+  const T=[["book","Kochbuch"],["pantry","Vorrat"],["new","Neu"]];
+  document.getElementById("tabs").innerHTML=T.map(([k,l])=>`<button class="${st.tab===k?"on":""}" data-act="tab" data-v="${k}">${l}</button>`).join("");
+  const body=st.tab==="book"?book():st.tab==="pantry"?pantryView():neu();
+  document.getElementById("view").innerHTML=(st.msg?`<div class="msg" role="status">${esc(st.msg)}</div>`:"")+body;
+  st.msg="";
+}
+function addPantry(v){
+  v=v.trim();if(!v)return;
+  if(isStaple(v)){st.msg=`„${v}“ setze ich schon voraus.`;return}
+  const known=allIng().find(i=>norm(i)===norm(v));
+  if(!pantry.some(p=>norm(p)===norm(v)))pantry.push(known||v);
+  store("kb_pantry",pantry);
+}
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]");if(!b)return;
+  const a=b.dataset.act,v=b.dataset.v;
+  if(a==="tab")st.tab=v;
+  else if(a==="cat")st.cat=v;
+  else if(a==="max")st.max=+v;
+  else if(a==="shift")st.shift++;
+  else if(a==="fold")st.fold=!st.fold;
+  else if(a==="tog"){const i=b.dataset.i;pantry=pantry.some(p=>norm(p)===norm(i))?pantry.filter(p=>norm(p)!==norm(i)):[...pantry,i];store("kb_pantry",pantry)}
+  else if(a==="add")addPantry(document.getElementById("pin").value);
+  else if(a==="clear"){pantry=[];store("kb_pantry",pantry)}
+  else if(a==="del"){const d=dishes.find(x=>x.id===b.dataset.id);if(!d||!confirm(`„${d.name}“ wirklich löschen?`))return;dishes=dishes.filter(x=>x!==d);store("kb_dishes",dishes);st.msg="Gelöscht: "+d.name}
+  else if(a==="save"){
+    const name=document.getElementById("nn").value.trim(),cat=document.getElementById("nc").value;
+    const ing=[...new Map(document.getElementById("ni").value.split(/[,\n]/).map(s=>s.trim()).filter(Boolean).map(s=>[norm(s),s])).values()];
+    if(!name||!ing.length){alert("Bitte gib einen Namen und mindestens eine Zutat ein.");return}
+    dishes.push({id:"u"+Date.now(),name,cat,ing});store("kb_dishes",dishes);
+    st.tab="book";st.cat=cat;st.msg="Gespeichert: "+name;
+  }
+  else if(a==="export"){
+    const u=URL.createObjectURL(new Blob([JSON.stringify({dishes,pantry})],{type:"application/json"}));
+    const l=document.createElement("a");l.href=u;l.download="kochbuch.json";l.click();URL.revokeObjectURL(u);return;
+  }
+  else if(a==="imp"){document.getElementById("imp").click();return}
+  else if(a==="reset"){if(!confirm("Alle eigenen Änderungen verwerfen und die Startliste wiederherstellen?"))return;dishes=seed();store("kb_dishes",dishes);st.msg="Startliste wiederhergestellt"}
+  render();
+});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="pin"){addPantry(e.target.value);render()}});
+document.addEventListener("change",e=>{
+  if(e.target.id!=="imp"||!e.target.files[0])return;
+  const r=new FileReader();
+  r.onload=()=>{try{const o=JSON.parse(r.result);if(!Array.isArray(o.dishes))throw 0;
+    dishes=o.dishes.filter(d=>d&&d.name&&Array.isArray(d.ing)).map((d,i)=>({id:String(d.id||"i"+i),name:String(d.name),cat:String(d.cat||"Sonstiges"),ing:d.ing.map(String)}));
+    pantry=Array.isArray(o.pantry)?o.pantry.map(String):[];store("kb_dishes",dishes);store("kb_pantry",pantry);
+    st.tab="book";st.msg="Sicherung geladen"}catch(x){st.msg="Datei konnte nicht gelesen werden"}render()};
+  r.readAsText(e.target.files[0]);
+});
+render();
+</script>
+</body>
+</html>
